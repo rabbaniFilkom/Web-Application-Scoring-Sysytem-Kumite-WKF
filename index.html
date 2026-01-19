@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WKF Pro Scoreboard V5 (Fixed Voice)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+
+    <style>
+        :root { --bg-color: #0F172A; }
+        body {
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; 
+            user-select: none; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        .font-mono-digit { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+        .btn-score:active { transform: scale(0.92); }
+        .senshu-badge { opacity: 0.3; filter: grayscale(100%); transition: 0.3s; }
+        .senshu-badge.active { opacity: 1; filter: grayscale(0%); box-shadow: 0 0 15px rgba(250, 204, 21, 0.3); }
+        .dot { width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); }
+        .dot.active { background: #FACC15; border-color: #FACC15; box-shadow: 0 0 8px #FACC15; }
+        .dot.hansoku { background: #EF4444; border-color: #EF4444; box-shadow: 0 0 10px #EF4444; }
+        .modal-bg { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); }
+        .icon-btn.active { color: #4ade80; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.3); }
+        .icon-btn.inactive { color: #64748b; opacity: 0.5; }
+    </style>
+</head>
+<body class="h-screen flex flex-col" onclick="initAudioContext()"> 
+
+    <div class="h-20 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-white/10 rounded-md flex items-center justify-center font-bold text-xs">WKF</div>
+            <div class="hidden md:flex flex-col">
+                <span class="text-xs text-slate-400 font-bold uppercase">Yudhistira Championship 1</span>
+            </div>
+        </div>
+
+        <div class="absolute left-1/2 top-4 transform -translate-x-1/2 flex flex-col items-center cursor-pointer group" onclick="toggleTimer()">
+            <div id="timer-display" class="font-mono-digit text-5xl md:text-6xl font-bold text-yellow-400 leading-none drop-shadow-lg">03:00</div>
+            <span id="timer-status" class="text-[10px] uppercase font-bold text-slate-600 mt-1 group-hover:text-slate-300">Tap to Start</span>
+        </div>
+
+        <div class="flex gap-2">
+            <button onclick="Announcer.toggle()" id="btn-voice" class="icon-btn active p-2 rounded-lg transition"><i data-lucide="mic" class="w-5 h-5"></i></button>
+            <button onclick="Sound.toggleMute()" id="btn-sfx" class="icon-btn active p-2 rounded-lg transition"><i data-lucide="volume-2" class="w-5 h-5"></i></button>
+            
+            <button onclick="openSettings()" class="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><i data-lucide="settings" class="w-5 h-5"></i></button>
+            <button onclick="resetMatch()" class="p-2 hover:bg-red-900/20 text-red-500 rounded-lg"><i data-lucide="rotate-ccw" class="w-5 h-5"></i></button>
+        </div>
+    </div>
+
+    <div class="flex-1 flex overflow-hidden relative">
+        <div class="w-1/2 relative bg-gradient-to-br from-slate-900 to-red-900/20 border-r border-slate-800 flex flex-col items-center justify-start py-4">
+            <div class="w-full flex justify-between items-center px-4 mb-4">
+                <h2 class="text-4xl font-black text-red-500">AKA</h2>
+                <div id="senshu-aka" onclick="toggleSenshu('aka')" class="senshu-badge px-3 py-1 bg-yellow-500/10 border border-yellow-500/50 rounded-full flex items-center gap-2 cursor-pointer">
+                    <i data-lucide="award" class="w-4 h-4 text-yellow-500"></i>
+                    <span class="hidden md:inline text-[10px] font-bold text-yellow-500">SENSHU</span>
+                </div>
+            </div>
+            <div class="flex-1 flex items-center justify-center w-full relative group">
+                <div id="score-aka" class="font-mono-digit text-[clamp(8rem,20vw,14rem)] font-bold text-white leading-none">0</div>
+                <div class="absolute right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="adjustScore('aka', 1)" class="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300"><i data-lucide="chevron-up"></i></button>
+                    <button onclick="adjustScore('aka', -1)" class="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300"><i data-lucide="chevron-down"></i></button>
+                </div>
+            </div>
+            <div class="mb-4 flex flex-col items-center gap-2">
+                <div class="flex gap-2" id="dots-aka"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+        </div>
+
+        <div class="w-1/2 relative bg-gradient-to-bl from-slate-900 to-blue-900/20 flex flex-col items-center justify-start py-4">
+            <div class="w-full flex flex-row-reverse justify-between items-center px-4 mb-4">
+                <h2 class="text-4xl font-black text-blue-500">AO</h2>
+                <div id="senshu-ao" onclick="toggleSenshu('ao')" class="senshu-badge px-3 py-1 bg-yellow-500/10 border border-yellow-500/50 rounded-full flex items-center gap-2 cursor-pointer flex-row-reverse">
+                    <i data-lucide="award" class="w-4 h-4 text-yellow-500"></i>
+                    <span class="hidden md:inline text-[10px] font-bold text-yellow-500">SENSHU</span>
+                </div>
+            </div>
+            <div class="flex-1 flex items-center justify-center w-full relative group">
+                <div id="score-ao" class="font-mono-digit text-[clamp(8rem,20vw,14rem)] font-bold text-white leading-none">0</div>
+                <div class="absolute left-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="adjustScore('ao', 1)" class="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300"><i data-lucide="chevron-up"></i></button>
+                    <button onclick="adjustScore('ao', -1)" class="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300"><i data-lucide="chevron-down"></i></button>
+                </div>
+            </div>
+            <div class="mb-4 flex flex-col items-center gap-2">
+                <div class="flex gap-2" id="dots-ao"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="h-auto min-h-[140px] bg-slate-950 border-t border-slate-800 grid grid-cols-2 gap-px shrink-0">
+        <div class="p-3 flex flex-col gap-3 border-r border-slate-800">
+            <div class="grid grid-cols-3 gap-2 h-full">
+                <button onclick="addPoint('aka', 1)" class="btn-score bg-slate-800 hover:bg-red-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">YUKO</span></button>
+                <button onclick="addPoint('aka', 2)" class="btn-score bg-slate-800 hover:bg-red-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">WAZA</span></button>
+                <button onclick="addPoint('aka', 3)" class="btn-score bg-slate-800 hover:bg-red-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">IPPON</span></button>
+            </div>
+            <button onclick="addPenalty('aka')" class="w-full py-3 rounded bg-slate-900 border border-slate-800 text-slate-400 font-bold uppercase flex items-center justify-center gap-2 btn-score"><i data-lucide="alert-circle" class="w-4 h-4"></i> Foul Aka</button>
+        </div>
+        <div class="p-3 flex flex-col gap-3">
+            <div class="grid grid-cols-3 gap-2 h-full">
+                <button onclick="addPoint('ao', 1)" class="btn-score bg-slate-800 hover:bg-blue-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">YUKO</span></button>
+                <button onclick="addPoint('ao', 2)" class="btn-score bg-slate-800 hover:bg-blue-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">WAZA</span></button>
+                <button onclick="addPoint('ao', 3)" class="btn-score bg-slate-800 hover:bg-blue-600 rounded-lg flex flex-col items-center justify-center border border-slate-700"><span class="text-xl font-bold">IPPON</span></button>
+            </div>
+            <button onclick="addPenalty('ao')" class="w-full py-3 rounded bg-slate-900 border border-slate-800 text-slate-400 font-bold uppercase flex items-center justify-center gap-2 btn-score"><i data-lucide="alert-circle" class="w-4 h-4"></i> Foul Ao</button>
+        </div>
+    </div>
+
+    <div id="winner-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-bg px-4">
+        <div class="bg-slate-900 border border-slate-700 p-8 rounded-2xl shadow-2xl text-center max-w-md w-full">
+            <h2 id="winner-name" class="text-5xl font-black uppercase mb-2 text-white">AKA WINS</h2>
+            <p id="winner-reason" class="text-slate-400 font-bold uppercase mb-8">By Points</p>
+            <button onclick="resetMatch(); document.getElementById('winner-modal').classList.add('hidden')" class="w-full py-3 bg-white text-slate-900 font-bold rounded-lg">New Match</button>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-bg px-4">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm">
+            <h3 class="text-lg font-bold text-white mb-4">Settings</h3>
+            <label class="block text-slate-500 text-xs font-bold uppercase mb-3">Test Audio</label>
+            <button onclick="Announcer.speak('Tes suara satu dua tiga')" class="w-full p-3 mb-6 bg-green-900/30 text-green-400 border border-green-800 rounded-lg font-bold">🔊 Cek Suara Bicara</button>
+
+            <label class="block text-slate-500 text-xs font-bold uppercase mb-3">Timer</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="setDuration(60)" class="p-3 bg-slate-800 rounded-lg font-bold">1:00</button>
+                <button onclick="setDuration(90)" class="p-3 bg-slate-800 rounded-lg font-bold">1:30</button>
+                <button onclick="setDuration(120)" class="p-3 bg-slate-800 rounded-lg font-bold">2:00</button>
+                <button onclick="setDuration(180)" class="p-3 bg-slate-800 rounded-lg font-bold">3:00</button>
+            </div>
+            <button onclick="document.getElementById('settings-modal').classList.add('hidden')" class="w-full mt-6 py-3 bg-slate-800 rounded-lg font-bold text-slate-400">Close</button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- ANNOUNCER ENGINE (ROBUST VERSION) ---
+        const Announcer = {
+            enabled: true,
+            synth: window.speechSynthesis,
+            
+            init() {
+                // Trik memaksa browser memuat suara
+                const load = () => { let v = this.synth.getVoices(); console.log("Voices loaded"); };
+                load();
+                if(this.synth.onvoiceschanged !== undefined) this.synth.onvoiceschanged = load;
+            },
+
+            toggle() {
+                this.enabled = !this.enabled;
+                const btn = document.getElementById('btn-voice');
+                btn.className = this.enabled ? "icon-btn active p-2 rounded-lg transition" : "icon-btn inactive p-2 rounded-lg transition";
+                btn.innerHTML = this.enabled ? '<i data-lucide="mic" class="w-5 h-5"></i>' : '<i data-lucide="mic-off" class="w-5 h-5"></i>';
+                lucide.createIcons();
+                if(this.enabled) this.speak("Voice On");
+            },
+
+            speak(text) {
+                if(!this.enabled) return;
+                this.synth.cancel(); // Hentikan suara sebelumnya
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                const voices = this.synth.getVoices();
+                
+                // Cari suara Indonesia, kalau gak ada pakai default
+                const idVoice = voices.find(v => v.lang.includes('id-ID') || v.lang.includes('ind'));
+                if(idVoice) utterance.voice = idVoice;
+                
+                // Setting biar jelas
+                utterance.rate = 1.0; // Kecepatan normal
+                utterance.pitch = 1.0; 
+                utterance.volume = 1.0; // Volume max
+
+                this.synth.speak(utterance);
+            }
+        };
+
+        // --- AUDIO ENGINE (SFX) ---
+        const Sound = {
+            ctx: null,
+            isMuted: false,
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                    Announcer.init(); 
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                const btn = document.getElementById('btn-sfx');
+                btn.className = !this.isMuted ? "icon-btn active p-2 rounded-lg transition" : "icon-btn inactive p-2 rounded-lg transition";
+                btn.innerHTML = !this.isMuted ? '<i data-lucide="volume-2" class="w-5 h-5"></i>' : '<i data-lucide="volume-x" class="w-5 h-5"></i>';
+                lucide.createIcons();
+                if(!this.isMuted) this.playTone(600, 'sine', 0.1);
+            },
+            playTone(freq, type, duration) {
+                if (this.isMuted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            },
+            click() { this.playTone(600, 'sine', 0.1); },
+            penalty() { this.playTone(150, 'sawtooth', 0.15); },
+            tick() { this.playTone(800, 'square', 0.03); },
+            urgentTick() { this.playTone(1200, 'square', 0.05); },
+            buzzer() { this.playTone(300, 'sawtooth', 1.5); }
+        };
+
+        // Global Init for body onclick
+        window.initAudioContext = function() {
+            Sound.init();
+        }
+
+        // --- GAME LOGIC ---
+        let state = { aka: {score:0,penalties:0,senshu:false}, ao: {score:0,penalties:0,senshu:false}, timer:180, defaultTime:180, isRunning:false, interval:null };
+        const timerEl = document.getElementById('timer-display');
+
+        function updateDisplay() {
+            document.getElementById('score-aka').innerText = state.aka.score;
+            document.getElementById('score-ao').innerText = state.ao.score;
+            document.getElementById('senshu-aka').classList.toggle('active', state.aka.senshu);
+            document.getElementById('senshu-ao').classList.toggle('active', state.ao.senshu);
+            ['aka', 'ao'].forEach(side => {
+                const dots = document.getElementById(`dots-${side}`).children;
+                for(let i=0; i<5; i++) {
+                    dots[i].className = 'dot';
+                    if (i < state[side].penalties) dots[i].classList.add(i === 4 ? 'hansoku' : 'active');
+                }
+            });
+        }
+
+        function addPoint(side, points) {
+            state[side].score += points;
+            Sound.click();
+            let pName = points === 1 ? "Yuko" : points === 2 ? "Waza-ari" : "Ippon";
+            let sName = side === 'aka' ? "Aka" : "Ao";
+            Announcer.speak(`${sName}, ${pName}, ${points} Poin`);
+            updateDisplay();
+            checkWinner();
+        }
+
+        function adjustScore(side, amount) {
+            if (state[side].score + amount >= 0) {
+                state[side].score += amount;
+                Sound.click();
+                updateDisplay();
+                checkWinner();
+            }
+        }
+
+        function addPenalty(side) {
+            if (state[side].penalties < 5) {
+                state[side].penalties++;
+                Sound.penalty();
+                let sName = side === 'aka' ? "Aka" : "Ao";
+                if(state[side].penalties === 5) {
+                    Sound.buzzer();
+                    Announcer.speak(`${sName} Hansoku Diskualifikasi`);
+                    showWinner(side === 'aka' ? 'ao' : 'aka', 'Hansoku');
+                } else {
+                    Announcer.speak(`${sName} Pelanggaran`);
+                }
+                updateDisplay();
+            } else {
+                state[side].penalties = 0;
+                Sound.click();
+                Announcer.speak("Reset Pelanggaran");
+                updateDisplay();
+            }
+        }
+
+        function toggleSenshu(side) {
+            Sound.click();
+            let sName = side === 'aka' ? "Aka" : "Ao";
+            if (state[side].senshu) {
+                state[side].senshu = false;
+                Announcer.speak("Senshu Batal");
+            } else {
+                state.aka.senshu = false;
+                state.ao.senshu = false;
+                state[side].senshu = true;
+                Announcer.speak(`${sName} Senshu`);
+            }
+            updateDisplay();
+        }
+
+        function toggleTimer() {
+            Sound.init();
+            if (state.isRunning) {
+                clearInterval(state.interval);
+                state.isRunning = false;
+                document.getElementById('timer-status').innerText = "PAUSED";
+                timerEl.classList.remove('text-white');
+                timerEl.classList.add('text-yellow-400');
+                Announcer.speak("Stop");
+            } else {
+                state.isRunning = true;
+                document.getElementById('timer-status').innerText = "RUNNING";
+                timerEl.classList.remove('text-yellow-400');
+                timerEl.classList.add('text-white');
+                state.interval = setInterval(() => {
+                    if (state.timer > 0) {
+                        state.timer--;
+                        updateTimerText();
+                        // Voice Alerts
+                        if(state.timer === 30) Announcer.speak("Tiga puluh detik");
+                        if(state.timer === 10) {
+                            Announcer.speak("Sepuluh detik, Atoshi Baraku");
+                            timerEl.classList.add('text-red-500');
+                        }
+                        // SFX
+                        if(state.timer <= 10) Sound.urgentTick();
+                        else if (state.timer > 10) Sound.tick();
+                    } else {
+                        timeUp();
+                    }
+                }, 1000);
+            }
+        }
+
+        function updateTimerText() {
+            let m = Math.floor(state.timer / 60);
+            let s = state.timer % 60;
+            timerEl.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function checkWinner() {
+            if (state.aka.score - state.ao.score >= 8) {
+                Sound.buzzer();
+                Announcer.speak("Aka Menang");
+                showWinner('aka', '8 Point Difference');
+            }
+            if (state.ao.score - state.aka.score >= 8) {
+                Sound.buzzer();
+                Announcer.speak("Ao Menang");
+                showWinner('ao', '8 Point Difference');
+            }
+        }
+
+        function timeUp() {
+            clearInterval(state.interval);
+            state.isRunning = false;
+            Sound.buzzer();
+            Announcer.speak("Waktu Habis, Yame");
+            
+            let winner = 'DRAW';
+            if (state.aka.score > state.ao.score) winner = 'aka';
+            else if (state.ao.score > state.aka.score) winner = 'ao';
+            else {
+                if (state.aka.senshu) winner = 'aka';
+                else if (state.ao.senshu) winner = 'ao';
+                else winner = 'HANTEI';
+            }
+            
+            setTimeout(() => {
+                if(winner !== 'HANTEI') Announcer.speak(`Pemenangnya ${winner}`);
+                showWinner(winner, 'Time Limit');
+            }, 2000);
+        }
+
+        function showWinner(side, reason) {
+            clearInterval(state.interval);
+            state.isRunning = false;
+            const modal = document.getElementById('winner-modal');
+            const title = document.getElementById('winner-name');
+            document.getElementById('winner-reason').innerText = reason;
+
+            if (side === 'aka') {
+                title.innerText = "AKA WINS";
+                title.className = "text-5xl font-black text-red-500 mb-2";
+            } else if (side === 'ao') {
+                title.innerText = "AO WINS";
+                title.className = "text-5xl font-black text-blue-500 mb-2";
+            } else {
+                title.innerText = "HANTEI";
+                title.className = "text-5xl font-black text-white mb-2";
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function resetMatch() {
+            clearInterval(state.interval);
+            state.isRunning = false;
+            state.timer = state.defaultTime;
+            state.aka = {score:0,penalties:0,senshu:false};
+            state.ao = {score:0,penalties:0,senshu:false};
+            document.getElementById('timer-status').innerText = "TAP TO START";
+            timerEl.classList.remove('text-red-500');
+            timerEl.classList.add('text-yellow-400');
+            Announcer.speak("Siap");
+            updateTimerText();
+            updateDisplay();
+        }
+
+        function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
+        function setDuration(sec) {
+            state.defaultTime = sec;
+            resetMatch();
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        updateTimerText();
+        Announcer.init(); // Start voice load
+    </script>
+</body>
+</html>
